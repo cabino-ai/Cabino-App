@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useRef } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { 
   Camera, 
   Box, 
@@ -35,55 +36,27 @@ import {
 import { openPicker } from './lib/googleDrive';
 import { resizeImage } from './lib/imageUtils';
 import { AuthProvider, useAuth, LoginPage, UserProfile } from './components/Auth';
+import { Onboarding } from './components/Onboarding';
 import { Library } from './components/Library';
 import { saveProject, Project, getProjectById, updateProjectSharing } from './services/projectService';
 import { BeforeAfterSlider } from './components/BeforeAfterSlider';
 
-type Step = 'room' | 'cabinets' | 'visualizing' | 'result' | 'library';
+type Step = 'room' | 'cabinets' | 'visualizing' | 'result';
 
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
     </AuthProvider>
   );
 }
 
-function AppContent() {
-  const { user, loading: authLoading } = useAuth();
-  const [sharedProject, setSharedProject] = React.useState<Project | null>(null);
-  const [loadingShared, setLoadingShared] = React.useState(() => {
-    if (typeof window !== 'undefined') {
-      return !!new URLSearchParams(window.location.search).get('share');
-    }
-    return false;
-  });
+function AppRoutes() {
+  const { user, userProfile, loading } = useAuth();
 
-  React.useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const shareId = params.get('share');
-    console.log('AppContent useEffect, shareId:', shareId);
-    if (shareId) {
-      setLoadingShared(true);
-      getProjectById(shareId).then(project => {
-        console.log('AppContent getProjectById result:', project ? 'Project found' : 'Project NOT found');
-        if (project) {
-          console.log('AppContent project isPublic:', project.isPublic);
-          if (project.isPublic) {
-            setSharedProject(project);
-          } else {
-            console.log('AppContent project is NOT public, showing login');
-          }
-        }
-        setLoadingShared(false);
-      }).catch((err) => {
-        console.error('AppContent getProjectById error:', err);
-        setLoadingShared(false);
-      });
-    }
-  }, []);
-
-  if (authLoading || loadingShared) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-[#F5F5F5] flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-black/20" />
@@ -91,20 +64,163 @@ function AppContent() {
     );
   }
 
-  if (sharedProject) {
-    return <MainApp initialProject={sharedProject} isPublicView={true} />;
-  }
+  return (
+    <Routes>
+      <Route path="/login" element={
+        user ? (
+          userProfile?.onboardingCompleted ? <Navigate to="/" replace /> : <Navigate to="/onboarding" replace />
+        ) : <LoginPage />
+      } />
+      <Route path="/onboarding" element={
+        !user ? <Navigate to="/login" replace /> : (
+          userProfile?.onboardingCompleted ? <Navigate to="/" replace /> : <Onboarding />
+        )
+      } />
+      <Route path="/share/:projectId" element={<SharedProjectView />} />
+      <Route path="/" element={
+        <ProtectedRoute>
+          <ProjectView />
+        </ProtectedRoute>
+      } />
+      <Route path="/project/:projectId" element={
+        <ProtectedRoute>
+          <ProjectView />
+        </ProtectedRoute>
+      } />
+      <Route path="/library" element={
+        <ProtectedRoute>
+          <LibraryView />
+        </ProtectedRoute>
+      } />
+    </Routes>
+  );
+}
 
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { user, userProfile } = useAuth();
   if (!user) {
-    return <LoginPage />;
+    return <Navigate to="/login" replace />;
+  }
+  if (userProfile && !userProfile.onboardingCompleted) {
+    return <Navigate to="/onboarding" replace />;
+  }
+  return <>{children}</>;
+}
+
+function ProjectView() {
+  const { projectId } = useParams();
+  const location = useLocation();
+  const { user } = useAuth();
+  const [fetchedProject, setFetchedProject] = React.useState<Project | null>(null);
+  const [loading, setLoading] = React.useState(false);
+
+  const project = location.state?.project || fetchedProject;
+
+  React.useEffect(() => {
+    if (projectId && !location.state?.project) {
+      setLoading(true);
+      getProjectById(projectId).then(p => {
+        setFetchedProject(p);
+        setLoading(false);
+      }).catch(() => setLoading(false));
+    }
+  }, [projectId, location.state?.project]);
+
+  if (loading) {
+    return <div className="min-h-screen bg-[#F5F5F5] flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-black/20" /></div>;
   }
 
-  return <MainApp />;
+  if (projectId && !project) {
+    return (
+      <div className="min-h-screen bg-[#F5F5F5] flex flex-col items-center justify-center p-6 text-center space-y-4">
+        <div className="w-16 h-16 bg-black/5 rounded-2xl flex items-center justify-center">
+          <X className="w-8 h-8 text-black/40" />
+        </div>
+        <h2 className="text-2xl font-light tracking-tight">Project Not Found</h2>
+        <p className="text-black/50 text-sm max-w-md">This project may have been deleted or you don't have permission to view it.</p>
+        <button onClick={() => window.location.href = '/'} className="mt-4 px-6 py-2 bg-black text-white rounded-full text-sm font-bold">Go Home</button>
+      </div>
+    );
+  }
+
+  // If there is no projectId, it's a new project (user is owner).
+  // If there is a projectId, check if the logged-in user owns it.
+  const isOwner = !projectId || (user && project?.uid === user.uid);
+
+  return <MainApp key={projectId || 'new'} initialProject={project || undefined} isPublicView={!isOwner} />;
+}
+
+function SharedProjectView() {
+  const { projectId } = useParams();
+  const [project, setProject] = React.useState<Project | null>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    if (projectId) {
+      getProjectById(projectId).then(p => {
+        if (p && p.isPublic) {
+          setProject(p);
+        }
+        setLoading(false);
+      }).catch(() => setLoading(false));
+    } else {
+      setLoading(false);
+    }
+  }, [projectId]);
+
+  if (loading) {
+    return <div className="min-h-screen bg-[#F5F5F5] flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-black/20" /></div>;
+  }
+
+  if (!project) {
+    return (
+      <div className="min-h-screen bg-[#F5F5F5] flex flex-col items-center justify-center p-6 text-center space-y-4">
+        <div className="w-16 h-16 bg-black/5 rounded-2xl flex items-center justify-center">
+          <X className="w-8 h-8 text-black/40" />
+        </div>
+        <h2 className="text-2xl font-light tracking-tight">Project Not Found</h2>
+        <p className="text-black/50 text-sm max-w-md">This project may have been deleted or is no longer public.</p>
+      </div>
+    );
+  }
+
+  return <MainApp initialProject={project} isPublicView={true} />;
+}
+
+function LibraryView() {
+  const navigate = useNavigate();
+  return (
+    <div className="min-h-screen bg-[#F5F5F5] text-[#1A1A1A] font-sans">
+      <header className="fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-b border-black/5 z-50 flex items-center justify-between px-6">
+        <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
+          <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center shadow-lg shadow-black/10">
+            <Box className="text-white w-5 h-5" />
+          </div>
+          <h1 className="font-semibold tracking-tight text-lg">Cabino</h1>
+        </div>
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => navigate('/library')}
+            className="text-xs font-bold uppercase tracking-widest flex items-center gap-1 transition-all text-black"
+          >
+            <FolderOpen className="w-3 h-3" />
+            Library
+          </button>
+          <UserProfile />
+        </div>
+      </header>
+      <main className="pt-24 pb-20 px-6 mx-auto max-w-5xl">
+        <Library onBack={() => navigate('/')} onLoadProject={(project) => navigate(`/project/${project.id}`, { state: { project } })} />
+      </main>
+    </div>
+  );
 }
 
 function MainApp({ initialProject, isPublicView = false }: { initialProject?: Project, isPublicView?: boolean }) {
   const { user } = useAuth();
-  const [step, setStep] = useState<Step>(isPublicView ? 'result' : 'room');
+  const navigate = useNavigate();
+  
+  const [step, setStep] = useState<Step>(isPublicView || initialProject ? 'result' : 'room');
   const [roomImage, setRoomImage] = useState<string | null>(initialProject?.roomImage || null);
   const [cabinetImages, setCabinetImages] = useState<string[]>(initialProject?.cabinetImages || []);
   const [generatedPrompt, setGeneratedPrompt] = useState<string | null>(initialProject?.generatedPrompt || null);
@@ -263,10 +379,8 @@ function MainApp({ initialProject, isPublicView = false }: { initialProject?: Pr
     setIsPublic(false);
     setShowSlider(false);
     setError(null);
-    // Clear URL if it was a shared view
-    if (window.location.search.includes('share=')) {
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
+    
+    navigate('/', { replace: true });
   };
 
   const copyToClipboard = () => {
@@ -285,7 +399,7 @@ function MainApp({ initialProject, isPublicView = false }: { initialProject?: Pr
       setIsPublic(newPublicState);
       
       if (newPublicState) {
-        const shareUrl = `${window.location.origin}${window.location.pathname}?share=${currentProjectId}`;
+        const shareUrl = `${window.location.origin}/share/${currentProjectId}`;
         await navigator.clipboard.writeText(shareUrl);
         setSuccess("Link copied to clipboard! Anyone with this link can view this design.");
       } else {
@@ -331,6 +445,8 @@ function MainApp({ initialProject, isPublicView = false }: { initialProject?: Pr
       setCurrentProjectId(projectId!);
       setIsPublic(false);
       setTimeout(() => setSuccess(null), 3000);
+      
+      window.history.replaceState(null, '', `/project/${projectId}`);
     } catch (err) {
       console.error(err);
       setError("Failed to save project. Please try again.");
@@ -339,32 +455,18 @@ function MainApp({ initialProject, isPublicView = false }: { initialProject?: Pr
     }
   };
 
-  const loadProject = (project: Project) => {
-    setRoomImage(project.roomImage);
-    setCabinetImages(project.cabinetImages);
-    setGeneratedPrompt(project.generatedPrompt);
-    setGeneratedImage(project.generatedImage);
-    setExtendToCeiling(project.extendToCeiling);
-    setStageRoom(project.stageRoom);
-    setLoadedMasterPrompt(project.masterPrompt || null);
-    setIsLoadedProject(true);
-    setCurrentProjectId(project.id || null);
-    setIsPublic(project.isPublic || false);
-    setStep('result');
-  };
-
   return (
     <div className="min-h-screen bg-[#F5F5F5] text-[#1A1A1A] font-sans selection:bg-black selection:text-white">
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-b border-black/5 z-50 flex items-center justify-between px-6">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
           <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center shadow-lg shadow-black/10">
             <Box className="text-white w-5 h-5" />
           </div>
           <h1 className="font-semibold tracking-tight text-lg">Cabino</h1>
         </div>
         <div className="flex items-center gap-4">
-          {step !== 'room' && step !== 'visualizing' && step !== 'library' && (
+          {!isPublicView && step !== 'room' && step !== 'visualizing' && (
             <button 
               onClick={reset}
               className="text-xs font-bold uppercase tracking-widest opacity-50 hover:opacity-100 transition-opacity flex items-center gap-1"
@@ -373,21 +475,25 @@ function MainApp({ initialProject, isPublicView = false }: { initialProject?: Pr
               Reset
             </button>
           )}
-          <button 
-            onClick={() => setStep('library')}
-            className={`text-xs font-bold uppercase tracking-widest flex items-center gap-1 transition-all ${step === 'library' ? 'text-black' : 'opacity-50 hover:opacity-100'}`}
-          >
-            <FolderOpen className="w-3 h-3" />
-            Library
-          </button>
-          <button 
-            onClick={() => setShowDebug(true)}
-            className="p-2 hover:bg-black/5 rounded-lg transition-colors"
-            title="Debug Prompts"
-          >
-            <Terminal className="w-5 h-5 opacity-50" />
-          </button>
-          <UserProfile />
+          {!isPublicView && (
+            <>
+              <button 
+                onClick={() => navigate('/library')}
+                className="text-xs font-bold uppercase tracking-widest flex items-center gap-1 transition-all opacity-50 hover:opacity-100"
+              >
+                <FolderOpen className="w-3 h-3" />
+                Library
+              </button>
+              <button 
+                onClick={() => setShowDebug(true)}
+                className="p-2 hover:bg-black/5 rounded-lg transition-colors"
+                title="Debug Prompts"
+              >
+                <Terminal className="w-5 h-5 opacity-50" />
+              </button>
+              <UserProfile />
+            </>
+          )}
         </div>
       </header>
 
@@ -478,17 +584,6 @@ function MainApp({ initialProject, isPublicView = false }: { initialProject?: Pr
 
       <main className={`pt-24 pb-20 px-6 mx-auto transition-all duration-500 ${step === 'result' ? 'max-w-5xl' : 'max-w-md'}`}>
         <AnimatePresence mode="wait">
-          {step === 'library' && (
-            <motion.div
-              key="library"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-            >
-              <Library onBack={() => setStep('room')} onLoadProject={loadProject} />
-            </motion.div>
-          )}
-
           {step === 'room' && (
             <motion.div
               key="room"
@@ -932,7 +1027,7 @@ function MainApp({ initialProject, isPublicView = false }: { initialProject?: Pr
       {/* Footer Status Bar */}
       <footer className="fixed bottom-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-t border-black/5 flex items-center justify-center px-6 z-50">
         <div className="flex gap-6">
-          {['room', 'cabinets', 'result', 'library'].map((s, i) => (
+          {['room', 'cabinets', 'result'].map((s, i) => (
             <div 
               key={s}
               className={`w-2 h-2 rounded-full transition-all duration-500 ${

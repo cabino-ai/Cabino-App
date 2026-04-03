@@ -68,7 +68,13 @@ service cloud.firestore {
              data.uid == request.auth.uid &&
              isValidEmail(data.email) &&
              (data.get('displayName', '') is string) &&
-             (data.get('photoURL', '') is string);
+             (data.get('photoURL', '') is string) &&
+             (data.get('subscriptionTier', '') is string) &&
+             (data.get('role', '') is string) &&
+             (data.get('companyName', '') is string) &&
+             (data.get('onboardingCompleted', false) is bool) &&
+             (data.get('credits', 0) is number) &&
+             (data.get('createdAt', request.time) is timestamp);
     }
 
     function isValidProject(data) {
@@ -94,6 +100,17 @@ service cloud.firestore {
       allow read: if isOwner(userId);
       allow create: if isOwner(userId) && isValidUser(request.resource.data);
       allow update: if isOwner(userId) && isValidUser(request.resource.data);
+      allow delete: if isOwner(userId);
+      
+      match /checkout_sessions/{id} {
+        allow read, write: if isOwner(userId);
+      }
+      match /subscriptions/{id} {
+        allow read: if isOwner(userId);
+      }
+      match /payments/{id} {
+        allow read: if isOwner(userId);
+      }
     }
 
     match /projects/{projectId} {

@@ -47,6 +47,18 @@
       "schema": "User",
       "description": "User profiles"
     },
+    "/users/{userId}/checkout_sessions/{sessionId}": {
+      "schema": { "type": "object" },
+      "description": "Stripe checkout sessions"
+    },
+    "/users/{userId}/subscriptions/{subscriptionId}": {
+      "schema": { "type": "object" },
+      "description": "Stripe subscriptions"
+    },
+    "/users/{userId}/payments/{paymentId}": {
+      "schema": { "type": "object" },
+      "description": "Stripe payments"
+    },
     "/projects/{projectId}": {
       "schema": "Project",
       "description": "User projects"
