@@ -1,0 +1,7 @@
+{
+  "name": "Cabino",
+  "description": "Instant cabinet replacement. Upload a photo of your room and the cabinets you want to see installed.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
