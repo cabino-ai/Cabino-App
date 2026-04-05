@@ -1,9 +1,5 @@
-import { GoogleGenAI, GenerateContentResponse, ThinkingLevel } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { imageUrlToBase64 } from "./imageUtils";
-
-const getAI = () => {
-  return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
-};
 
 export interface CabinetSpecs {
   type: 'base' | 'upper' | 'tall';
@@ -46,47 +42,86 @@ export const generateReplacementPrompt = async (
     stage?: string;
   }
 ): Promise<string> => {
-  const ai = getAI();
-  
-  // Convert URLs to base64 if needed
+  // Convert URLs to base64 client-side (always)
   const roomBase64 = await imageUrlToBase64(roomImage);
   const cabinetBase64s = await Promise.all(cabinetImages.map(img => imageUrlToBase64(img)));
 
-  const roomPart = {
+  if (import.meta.env.DEV) {
+    return generateReplacementPromptDirect(roomBase64, cabinetBase64s, extendToCeiling, stageRoom, customPrompts);
+  }
+
+  const response = await fetch('/api/generate-prompt', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ roomImage: roomBase64, cabinetImages: cabinetBase64s, extendToCeiling, stageRoom, customPrompts }),
+  });
+  const data = await response.json() as { prompt?: string; error?: string };
+  if (!response.ok) throw new Error(data.error || 'Failed to generate prompt');
+  return data.prompt || 'Failed to generate prompt.';
+};
+
+export const generateDesignImage = async (
+  roomImage: string,
+  cabinetImages: string[],
+  prompt: string
+): Promise<string | null> => {
+  // Convert URLs to base64 client-side (always)
+  const roomBase64 = await imageUrlToBase64(roomImage);
+  const cabinetBase64s = await Promise.all(cabinetImages.map(img => imageUrlToBase64(img)));
+
+  if (import.meta.env.DEV) {
+    return generateDesignImageDirect(roomBase64, cabinetBase64s, prompt);
+  }
+
+  const response = await fetch('/api/generate-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ roomImage: roomBase64, cabinetImages: cabinetBase64s, prompt }),
+  });
+  const data = await response.json() as { image?: string | null; error?: string };
+  if (!response.ok) throw new Error(data.error || 'Failed to generate image');
+  return data.image ?? null;
+};
+
+// ---- Direct Gemini calls (dev only) ----
+
+function getAI() {
+  return new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
+}
+
+function toImagePart(base64: string) {
+  return {
     inlineData: {
-      mimeType: "image/jpeg",
-      data: roomBase64.split(",")[1],
+      mimeType: "image/jpeg" as const,
+      data: base64.includes(',') ? base64.split(',')[1] : base64,
     },
   };
+}
 
-  const cabinetParts = cabinetBase64s.map(img => ({
-    inlineData: {
-      mimeType: "image/jpeg",
-      data: img.split(",")[1],
-    },
-  }));
+async function generateReplacementPromptDirect(
+  roomBase64: string,
+  cabinetBase64s: string[],
+  extendToCeiling: boolean,
+  stageRoom: boolean,
+  customPrompts?: { master?: string; extend?: string; stage?: string }
+): Promise<string> {
+  const ai = getAI();
 
   const masterPrompt = customPrompts?.master || DEFAULT_MASTER_PROMPT;
   const extendReplacement = customPrompts?.extend || DEFAULT_EXTEND_PROMPT;
   const stageAmendment = customPrompts?.stage || DEFAULT_STAGE_PROMPT;
 
   let basePrompt = extendToCeiling ? extendReplacement : masterPrompt;
-
-  if (stageRoom) {
-    basePrompt += stageAmendment;
-  }
-
+  if (stageRoom) basePrompt += stageAmendment;
   basePrompt += " Otherwise, keep everything else exactly the same. Do not add anything else. Return ONLY the final prompt text, no preamble or explanation.";
 
   const response = await ai.models.generateContent({
     model: "gemini-3.1-pro-preview",
     contents: {
       parts: [
-        roomPart,
-        ...cabinetParts,
-        {
-          text: basePrompt,
-        },
+        toImagePart(roomBase64),
+        ...cabinetBase64s.map(toImagePart),
+        { text: basePrompt },
       ],
     },
     config: {
@@ -95,39 +130,21 @@ export const generateReplacementPrompt = async (
   });
 
   return response.text || "Failed to generate prompt.";
-};
+}
 
-export const generateDesignImage = async (
-  roomImage: string,
-  cabinetImages: string[],
+async function generateDesignImageDirect(
+  roomBase64: string,
+  cabinetBase64s: string[],
   prompt: string
-): Promise<string | null> => {
+): Promise<string | null> {
   const ai = getAI();
-
-  // Convert URLs to base64 if needed
-  const roomBase64 = await imageUrlToBase64(roomImage);
-  const cabinetBase64s = await Promise.all(cabinetImages.map(img => imageUrlToBase64(img)));
-
-  const roomPart = {
-    inlineData: {
-      mimeType: "image/jpeg",
-      data: roomBase64.split(",")[1],
-    },
-  };
-
-  const cabinetParts = cabinetBase64s.map(img => ({
-    inlineData: {
-      mimeType: "image/jpeg",
-      data: img.split(",")[1],
-    },
-  }));
 
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash-image',
     contents: {
       parts: [
-        roomPart,
-        ...cabinetParts,
+        toImagePart(roomBase64),
+        ...cabinetBase64s.map(toImagePart),
         {
           text: `Based on the provided room image and cabinet references, generate a high-quality, photorealistic visualization of the room with the new cabinets installed. Use this specific prompt as guidance: ${prompt}`,
         },
@@ -142,4 +159,4 @@ export const generateDesignImage = async (
   }
 
   return null;
-};
+}
