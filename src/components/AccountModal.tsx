@@ -86,32 +86,45 @@ export function AccountModal({ isOpen, onClose, initialTab = 'profile' }: Accoun
     setSaving(true);
     setSuccessMessage('');
     try {
-      const response = await fetch('/api/create-checkout-session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          priceId: 'price_1TIEDYRzxeFhHl8ukjtG21RF',
-          userId: user.uid,
-          successUrl: window.location.origin,
-          cancelUrl: window.location.origin,
-        }),
+      // Write a checkout session doc — the Firebase Stripe Extension picks it up,
+      // creates/links the Stripe customer, and writes back the checkout URL.
+      const sessionsRef = collection(db, 'users', user.uid, 'checkout_sessions');
+      const docRef = await addDoc(sessionsRef, {
+        price: 'price_1TIEDYRzxeFhHl8ukjtG21RF',
+        success_url: window.location.origin,
+        cancel_url: window.location.origin,
+        mode: 'subscription',
       });
 
-      const data = await response.json();
+      // Wait for the extension to populate the URL (or an error)
+      const unsubscribe = onSnapshot(docRef, (snap) => {
+        const data = snap.data();
+        if (!data) return;
 
-      if (response.ok && data.url) {
-        // Open Stripe Checkout in a new tab to avoid iframe restrictions
-        window.open(data.url, '_blank');
+        if (data.error) {
+          console.error('Stripe checkout error:', data.error);
+          setSuccessMessage(`Error: ${data.error.message || 'Failed to start checkout'}`);
+          setSaving(false);
+          unsubscribe();
+          return;
+        }
+
+        if (data.url) {
+          window.open(data.url, '_blank');
+          setSaving(false);
+          unsubscribe();
+        }
+      });
+
+      // Timeout after 30s in case the extension doesn't respond
+      setTimeout(() => {
+        unsubscribe();
         setSaving(false);
-      } else {
-        console.error("Stripe checkout error:", data.error);
-        setSaving(false);
-        setSuccessMessage(`Error: ${data.error || 'Failed to start checkout'}`);
-      }
+        setSuccessMessage('Error: Checkout timed out. Please try again.');
+      }, 30000);
+
     } catch (error: any) {
-      console.error("Error upgrading:", error);
+      console.error('Error upgrading:', error);
       setSaving(false);
       setSuccessMessage(`Error: ${error.message || 'Failed to start checkout'}`);
     }

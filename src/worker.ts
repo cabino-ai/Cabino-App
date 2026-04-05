@@ -1,9 +1,7 @@
-import Stripe from 'stripe';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 
 interface Env {
   ASSETS: Fetcher;
-  STRIPE_SECRET_KEY: string;
   GEMINI_API_KEY: string;
 }
 
@@ -12,9 +10,6 @@ export default {
     const url = new URL(request.url);
 
     if (request.method === 'POST') {
-      if (url.pathname === '/api/create-checkout-session') {
-        return handleCreateCheckoutSession(request, env);
-      }
       if (url.pathname === '/api/generate-prompt') {
         return handleGeneratePrompt(request, env);
       }
@@ -26,43 +21,6 @@ export default {
     return env.ASSETS.fetch(request);
   },
 };
-
-// ---- Stripe ----
-
-async function handleCreateCheckoutSession(request: Request, env: Env): Promise<Response> {
-  if (!env.STRIPE_SECRET_KEY) {
-    return json({ error: 'STRIPE_SECRET_KEY is not set' }, 500);
-  }
-
-  const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
-    apiVersion: '2023-10-16',
-    httpClient: Stripe.createFetchHttpClient(),
-  });
-
-  try {
-    const body = await request.json() as { priceId: string; userId: string; successUrl: string; cancelUrl: string };
-    const { priceId, userId, successUrl, cancelUrl } = body;
-
-    if (!priceId || !userId) {
-      return json({ error: 'Missing priceId or userId' }, 400);
-    }
-
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [{ price: priceId, quantity: 1 }],
-      mode: 'subscription',
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      client_reference_id: userId,
-      metadata: { userId },
-    });
-
-    return json({ url: session.url }, 200);
-  } catch (error: any) {
-    console.error('Stripe error:', error);
-    return json({ error: error.message }, 500);
-  }
-}
 
 // ---- Gemini ----
 
