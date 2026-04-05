@@ -21,6 +21,9 @@ export default {
       if (url.pathname === '/api/create-checkout-session') {
         return handleCreateCheckoutSession(request, env);
       }
+      if (url.pathname === '/api/create-portal-session') {
+        return handleCreatePortalSession(request, env);
+      }
       if (url.pathname === '/api/stripe-webhook') {
         return handleStripeWebhook(request, env);
       }
@@ -83,6 +86,37 @@ async function handleCreateCheckoutSession(request: Request, env: Env): Promise<
     return json({ url: session.url }, 200);
   } catch (error: any) {
     console.error('Stripe checkout error:', error);
+    return json({ error: error.message }, 500);
+  }
+}
+
+async function handleCreatePortalSession(request: Request, env: Env): Promise<Response> {
+  if (!env.STRIPE_SECRET_KEY) return json({ error: 'STRIPE_SECRET_KEY is not set' }, 500);
+  if (!env.FIREBASE_CLIENT_EMAIL || !env.FIREBASE_PRIVATE_KEY) {
+    return json({ error: 'Firebase credentials not set' }, 500);
+  }
+
+  try {
+    const { userId, returnUrl } = await request.json() as { userId: string; returnUrl: string };
+    if (!userId) return json({ error: 'Missing userId' }, 400);
+
+    const userDoc = await firestoreGet(env, `users/${userId}`);
+    const stripeCustomerId = userDoc?.stripeId;
+    if (!stripeCustomerId) return json({ error: 'No Stripe customer found for this user' }, 404);
+
+    const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
+      apiVersion: '2023-10-16',
+      httpClient: Stripe.createFetchHttpClient(),
+    });
+
+    const session = await stripe.billingPortal.sessions.create({
+      customer: stripeCustomerId,
+      return_url: returnUrl || 'https://app.cabino.ai',
+    });
+
+    return json({ url: session.url }, 200);
+  } catch (error: any) {
+    console.error('Stripe portal error:', error);
     return json({ error: error.message }, 500);
   }
 }

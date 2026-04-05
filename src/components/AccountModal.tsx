@@ -5,8 +5,7 @@ import { X, User, CreditCard, Loader2, CheckCircle2, Sparkles, Briefcase } from 
 import { useAuth } from './Auth';
 import { doc, updateDoc, collection, addDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { updateProfile, deleteUser } from 'firebase/auth';
-import { httpsCallable } from 'firebase/functions';
-import { db, functions } from '../lib/firebase';
+import { db } from '../lib/firebase';
 
 interface AccountModalProps {
   isOpen: boolean;
@@ -114,19 +113,21 @@ export function AccountModal({ isOpen, onClose, initialTab = 'profile' }: Accoun
   const handleManageSubscription = async () => {
     setSaving(true);
     try {
-      // The Firebase Stripe extension uses a callable function to create portal links
-      const createPortalLink = httpsCallable(functions, 'ext-firestore-stripe-payments-createPortalLink');
-      const { data } = await createPortalLink({
-        returnUrl: window.location.origin,
+      const response = await fetch('/api/create-portal-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.uid, returnUrl: window.location.origin }),
       });
-      
-      if ((data as any)?.url) {
-        window.location.assign((data as any).url);
+
+      const data = await response.json() as { url?: string; error?: string };
+      if (response.ok && data.url) {
+        window.location.assign(data.url);
       } else {
-        throw new Error('No URL returned from Stripe portal function');
+        console.error('Error managing subscription:', data.error);
       }
     } catch (error) {
-      console.error("Error managing subscription:", error);
+      console.error('Error managing subscription:', error);
+    } finally {
       setSaving(false);
     }
   };
