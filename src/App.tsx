@@ -39,6 +39,7 @@ import { AuthProvider, useAuth, LoginPage, UserProfile } from './components/Auth
 import { Onboarding } from './components/Onboarding';
 import { Library } from './components/Library';
 import { saveProject, Project, getProjectById, updateProjectSharing } from './services/projectService';
+import { hasDevAccess } from './lib/devAccess';
 import { BeforeAfterSlider } from './components/BeforeAfterSlider';
 
 type Step = 'room' | 'cabinets' | 'visualizing' | 'result';
@@ -56,7 +57,7 @@ export default function App() {
 function AppRoutes() {
   const { user, userProfile, loading } = useAuth();
 
-  if (loading) {
+  if (loading || (user && !userProfile)) {
     return (
       <div className="min-h-screen bg-[#F5F5F5] flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-black/20" />
@@ -484,13 +485,15 @@ function MainApp({ initialProject, isPublicView = false }: { initialProject?: Pr
                 <FolderOpen className="w-3 h-3" />
                 Library
               </button>
-              <button 
-                onClick={() => setShowDebug(true)}
-                className="p-2 hover:bg-black/5 rounded-lg transition-colors"
-                title="Debug Prompts"
-              >
-                <Terminal className="w-5 h-5 opacity-50" />
-              </button>
+              {hasDevAccess(user?.email) && (
+                <button
+                  onClick={() => setShowDebug(true)}
+                  className="p-2 hover:bg-black/5 rounded-lg transition-colors"
+                  title="Debug Prompts"
+                >
+                  <Terminal className="w-5 h-5 opacity-50" />
+                </button>
+              )}
               <UserProfile />
             </>
           )}
