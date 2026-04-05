@@ -102,6 +102,40 @@ export async function firestoreGet(
   return doc.fields ? fromFirestoreFields(doc.fields) : {};
 }
 
+// Query a collection for the first doc matching a single field equality filter
+export async function firestoreQueryOne(
+  env: FirebaseAdminEnv,
+  collectionId: string,
+  field: string,
+  value: string
+): Promise<{ id: string; data: Record<string, any> } | null> {
+  const token = await getAccessToken(env);
+  const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/${env.FIREBASE_DATABASE_ID}/documents:runQuery`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: field },
+            op: 'EQUAL',
+            value: { stringValue: value },
+          },
+        },
+        limit: 1,
+      },
+    }),
+  });
+  if (!res.ok) throw new Error(`Firestore query failed: ${res.status}`);
+  const results = await res.json() as any[];
+  const hit = results.find(r => r.document);
+  if (!hit) return null;
+  const parts = hit.document.name.split('/');
+  return { id: parts[parts.length - 1], data: fromFirestoreFields(hit.document.fields || {}) };
+}
+
 export async function firestorePatch(
   env: FirebaseAdminEnv,
   docPath: string,

@@ -8,7 +8,7 @@ import {
   signOut, 
   User 
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, onSnapshot, serverTimestamp, collection, query, where } from 'firebase/firestore';
+import { doc, setDoc, getDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { Box, LogIn, LogOut, Loader2, AlertCircle, Settings, CreditCard, Briefcase } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -86,35 +86,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.error("Error creating user profile:", err);
         }
 
-        // Listen to real-time updates on the user profile
+        // Listen to real-time updates on the user profile.
+        // subscriptionTier is updated directly on this document by our Worker webhook.
         unsubscribeDoc = onSnapshot(userRef, (docSnap) => {
           if (docSnap.exists()) {
-            setUserProfile(prev => ({
-              ...(docSnap.data() as UserProfileData),
-              // Preserve subscriptionTier if it was set by the subscriptions listener
-              subscriptionTier: prev?.subscriptionTier === 'pro' ? 'pro' : (docSnap.data().subscriptionTier || 'free')
-            }));
+            setUserProfile(docSnap.data() as UserProfileData);
           }
           setLoading(false);
         });
-
-        // Listen to Stripe subscriptions
-        const subsRef = collection(db, 'users', firebaseUser.uid, 'subscriptions');
-        const q = query(subsRef, where('status', 'in', ['trialing', 'active']));
-        const unsubscribeSubs = onSnapshot(q, (snapshot) => {
-          if (!snapshot.empty) {
-            setUserProfile(prev => prev ? { ...prev, subscriptionTier: 'pro' } : null);
-          } else {
-            setUserProfile(prev => prev ? { ...prev, subscriptionTier: 'free' } : null);
-          }
-        });
-
-        // Override unsubscribeDoc to also unsubscribe from subscriptions
-        const originalUnsubscribeDoc = unsubscribeDoc;
-        unsubscribeDoc = () => {
-          if (originalUnsubscribeDoc) originalUnsubscribeDoc();
-          unsubscribeSubs();
-        };
 
       } else {
         setUserProfile(null);

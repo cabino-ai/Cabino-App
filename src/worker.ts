@@ -1,11 +1,12 @@
 import Stripe from 'stripe';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
-import { firestoreGet, firestorePatch } from './lib/firebase-admin';
+import { firestoreGet, firestorePatch, firestoreQueryOne } from './lib/firebase-admin';
 
 interface Env {
   ASSETS: Fetcher;
   GEMINI_API_KEY: string;
   STRIPE_SECRET_KEY: string;
+  STRIPE_WEBHOOK_SECRET: string;
   FIREBASE_PROJECT_ID: string;
   FIREBASE_DATABASE_ID: string;
   FIREBASE_CLIENT_EMAIL: string;
@@ -19,6 +20,9 @@ export default {
     if (request.method === 'POST') {
       if (url.pathname === '/api/create-checkout-session') {
         return handleCreateCheckoutSession(request, env);
+      }
+      if (url.pathname === '/api/stripe-webhook') {
+        return handleStripeWebhook(request, env);
       }
       if (url.pathname === '/api/generate-prompt') {
         return handleGeneratePrompt(request, env);
@@ -79,6 +83,62 @@ async function handleCreateCheckoutSession(request: Request, env: Env): Promise<
     return json({ url: session.url }, 200);
   } catch (error: any) {
     console.error('Stripe checkout error:', error);
+    return json({ error: error.message }, 500);
+  }
+}
+
+// ---- Stripe Webhook ----
+
+async function handleStripeWebhook(request: Request, env: Env): Promise<Response> {
+  if (!env.STRIPE_WEBHOOK_SECRET) return json({ error: 'STRIPE_WEBHOOK_SECRET is not set' }, 500);
+
+  const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
+    apiVersion: '2023-10-16',
+    httpClient: Stripe.createFetchHttpClient(),
+  });
+
+  const body = await request.text();
+  const signature = request.headers.get('stripe-signature') ?? '';
+
+  let event: Stripe.Event;
+  try {
+    event = await stripe.webhooks.constructEventAsync(body, signature, env.STRIPE_WEBHOOK_SECRET);
+  } catch (err: any) {
+    console.error('Webhook signature verification failed:', err.message);
+    return json({ error: 'Invalid signature' }, 400);
+  }
+
+  try {
+    const subscription = event.data.object as Stripe.Subscription;
+    const customerId = typeof subscription.customer === 'string'
+      ? subscription.customer
+      : subscription.customer?.id;
+
+    if (!customerId) return json({ received: true }, 200);
+
+    // Find the Firebase user with this Stripe customer ID
+    const match = await firestoreQueryOne(env, 'users', 'stripeId', customerId);
+    if (!match) {
+      console.error(`No Firebase user found for Stripe customer ${customerId}`);
+      return json({ received: true }, 200);
+    }
+
+    const isActive = ['active', 'trialing'].includes(subscription.status);
+    const tier = isActive ? 'pro' : 'free';
+
+    switch (event.type) {
+      case 'customer.subscription.created':
+      case 'customer.subscription.updated':
+        await firestorePatch(env, `users/${match.id}`, { subscriptionTier: tier });
+        break;
+      case 'customer.subscription.deleted':
+        await firestorePatch(env, `users/${match.id}`, { subscriptionTier: 'free' });
+        break;
+    }
+
+    return json({ received: true }, 200);
+  } catch (error: any) {
+    console.error('Webhook handler error:', error);
     return json({ error: error.message }, 500);
   }
 }
