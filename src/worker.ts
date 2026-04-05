@@ -1,8 +1,15 @@
+import Stripe from 'stripe';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import { firestoreGet, firestorePatch } from './lib/firebase-admin';
 
 interface Env {
   ASSETS: Fetcher;
   GEMINI_API_KEY: string;
+  STRIPE_SECRET_KEY: string;
+  FIREBASE_PROJECT_ID: string;
+  FIREBASE_DATABASE_ID: string;
+  FIREBASE_CLIENT_EMAIL: string;
+  FIREBASE_PRIVATE_KEY: string;
 }
 
 export default {
@@ -10,6 +17,9 @@ export default {
     const url = new URL(request.url);
 
     if (request.method === 'POST') {
+      if (url.pathname === '/api/create-checkout-session') {
+        return handleCreateCheckoutSession(request, env);
+      }
       if (url.pathname === '/api/generate-prompt') {
         return handleGeneratePrompt(request, env);
       }
@@ -21,6 +31,57 @@ export default {
     return env.ASSETS.fetch(request);
   },
 };
+
+// ---- Stripe ----
+
+async function handleCreateCheckoutSession(request: Request, env: Env): Promise<Response> {
+  if (!env.STRIPE_SECRET_KEY) return json({ error: 'STRIPE_SECRET_KEY is not set' }, 500);
+  if (!env.FIREBASE_CLIENT_EMAIL || !env.FIREBASE_PRIVATE_KEY) {
+    return json({ error: 'Firebase credentials not set' }, 500);
+  }
+
+  try {
+    const { userId, priceId, successUrl, cancelUrl } =
+      await request.json() as { userId: string; priceId: string; successUrl: string; cancelUrl: string };
+
+    if (!userId || !priceId) return json({ error: 'Missing userId or priceId' }, 400);
+
+    const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
+      apiVersion: '2023-10-16',
+      httpClient: Stripe.createFetchHttpClient(),
+    });
+
+    // Look up existing Stripe customer for this Firebase user
+    const userDoc = await firestoreGet(env, `users/${userId}`);
+    let stripeCustomerId: string | undefined = userDoc?.stripeId;
+
+    // Create and save a Stripe customer if one doesn't exist yet
+    if (!stripeCustomerId) {
+      const customer = await stripe.customers.create({
+        email: userDoc?.email,
+        metadata: { firebaseUID: userId },
+      });
+      stripeCustomerId = customer.id;
+      await firestorePatch(env, `users/${userId}`, { stripeId: stripeCustomerId });
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      customer: stripeCustomerId,
+      payment_method_types: ['card'],
+      line_items: [{ price: priceId, quantity: 1 }],
+      mode: 'subscription',
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      client_reference_id: userId,
+      metadata: { userId },
+    });
+
+    return json({ url: session.url }, 200);
+  } catch (error: any) {
+    console.error('Stripe checkout error:', error);
+    return json({ error: error.message }, 500);
+  }
+}
 
 // ---- Gemini ----
 

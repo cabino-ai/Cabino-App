@@ -6,3 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 [assets]
 directory = "./dist"
 binding = "ASSETS"
+
+[vars]
+FIREBASE_PROJECT_ID = "gen-lang-client-0069291289"
+FIREBASE_DATABASE_ID = "ai-studio-82e8f1bd-119c-481b-9744-f097f66f9455"
