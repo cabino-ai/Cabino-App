@@ -1,18 +1,17 @@
-import { 
-  collection, 
-  addDoc, 
-  query, 
-  where, 
-  getDocs, 
-  orderBy, 
-  Timestamp,
+import {
+  collection,
+  addDoc,
+  query,
+  where,
+  getDocs,
+  orderBy,
   serverTimestamp,
   deleteDoc,
   doc,
   setDoc,
   getDoc
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, auth, storage } from '../lib/firebase';
 import { base64ToBlob } from '../lib/imageUtils';
 
@@ -46,8 +45,7 @@ interface FirestoreErrorInfo {
 
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   let message = error instanceof Error ? error.message : String(error);
-  
-  // Add helpful context for common Storage errors that appear as "unknown" due to CORS/Permissions
+
   if (message.includes('storage/unknown')) {
     message = "Firebase Storage Error: This usually means you need to click 'Get Started' in the Firebase Storage Console to link your bucket. Please visit: https://console.firebase.google.com/project/gen-lang-client-0069291289/storage";
   }
@@ -74,9 +72,6 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
-/**
- * Uploads a base64 image to Firebase Storage and returns the download URL
- */
 async function uploadImage(base64: string, path: string): Promise<string> {
   try {
     const blob = base64ToBlob(base64, 'image/jpeg');
@@ -85,7 +80,6 @@ async function uploadImage(base64: string, path: string): Promise<string> {
     return getDownloadURL(storageRef);
   } catch (error) {
     console.error(`Storage Upload Error at ${path}:`, error);
-    // If it's a CORS error, it might not have a lot of info, but we try to log what we can
     throw error;
   }
 }
@@ -106,43 +100,33 @@ export interface Project {
 
 export const saveProject = async (projectData: Omit<Project, 'id' | 'uid' | 'createdAt'>) => {
   if (!auth.currentUser) throw new Error("User must be authenticated to save projects");
-  
+
   const { cabinetImages, roomImage, generatedImage, ...rest } = projectData;
   const path = 'projects';
   try {
-    // 1. Create a document reference first to get an ID
     const docRef = doc(collection(db, path));
     const projectId = docRef.id;
 
-    // 2. Upload images to Storage
-    const roomImageUrl = await uploadImage(roomImage, `projects/${projectId}/room.jpg`);
-    let generatedImageUrl = null;
-    if (generatedImage) {
-      generatedImageUrl = await uploadImage(generatedImage, `projects/${projectId}/result.jpg`);
-    }
+    // Upload all images to Storage in parallel
+    const [roomImageUrl, generatedImageUrl, ...cabinetImageUrls] = await Promise.all([
+      uploadImage(roomImage, `projects/${projectId}/room.jpg`),
+      generatedImage
+        ? uploadImage(generatedImage, `projects/${projectId}/result.jpg`)
+        : Promise.resolve(null),
+      ...cabinetImages.map((img, index) =>
+        uploadImage(img, `projects/${projectId}/cabinets/cabinet_${index}.jpg`)
+      ),
+    ]);
 
-    // 3. Save the main document with the Storage URLs FIRST
-    // This allows subcollection rules to verify ownership
-    const projectDoc = {
+    await setDoc(docRef, {
       ...rest,
       roomImage: roomImageUrl,
       generatedImage: generatedImageUrl,
+      cabinetImages: cabinetImageUrls,
       uid: auth.currentUser.uid,
       isPublic: false,
       createdAt: serverTimestamp(),
-    };
-
-    await setDoc(docRef, projectDoc);
-
-    // 4. Upload cabinet images to Storage and subcollection
-    const cabinetPromises = cabinetImages.map(async (img, index) => {
-      const url = await uploadImage(img, `projects/${projectId}/cabinets/cabinet_${index}.jpg`);
-      return addDoc(collection(db, 'projects', projectId, 'cabinets'), {
-        image: url,
-        createdAt: serverTimestamp(),
-      });
     });
-    await Promise.all(cabinetPromises);
 
     return projectId;
   } catch (error) {
@@ -152,30 +136,24 @@ export const saveProject = async (projectData: Omit<Project, 'id' | 'uid' | 'cre
 
 export const getProjects = async (): Promise<Project[]> => {
   if (!auth.currentUser) return [];
-  
+
   const path = 'projects';
   try {
     const q = query(
-      collection(db, path), 
+      collection(db, path),
       where("uid", "==", auth.currentUser.uid),
       orderBy("createdAt", "desc")
     );
     const querySnapshot = await getDocs(q);
-    
-    const projects = await Promise.all(querySnapshot.docs.map(async (docSnap) => {
+
+    return querySnapshot.docs.map((docSnap) => {
       const data = docSnap.data();
-      // Fetch cabinets for each project
-      const cabSnap = await getDocs(collection(db, 'projects', docSnap.id, 'cabinets'));
-      const cabinetImages = cabSnap.docs.map(d => d.data().image);
-      
       return {
         id: docSnap.id,
         ...data,
-        cabinetImages
+        cabinetImages: data.cabinetImages || [],
       } as Project;
-    }));
-    
-    return projects;
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
     return [];
@@ -194,26 +172,16 @@ export const deleteProject = async (projectId: string) => {
 export const getProjectById = async (projectId: string): Promise<Project | null> => {
   const path = `projects/${projectId}`;
   try {
-    console.log('Fetching project by ID:', projectId);
     const docRef = doc(db, 'projects', projectId);
     const docSnap = await getDoc(docRef);
-    
-    if (!docSnap.exists()) {
-      console.log('Project not found in Firestore');
-      return null;
-    }
-    
+
+    if (!docSnap.exists()) return null;
+
     const data = docSnap.data();
-    console.log('Project data fetched:', { isPublic: data.isPublic, uid: data.uid });
-    
-    // Fetch cabinets
-    const cabSnap = await getDocs(collection(db, 'projects', projectId, 'cabinets'));
-    const cabinetImages = cabSnap.docs.map(d => d.data().image);
-    
     return {
       id: docSnap.id,
       ...data,
-      cabinetImages
+      cabinetImages: data.cabinetImages || [],
     } as Project;
   } catch (error) {
     console.error('Error in getProjectById:', error);

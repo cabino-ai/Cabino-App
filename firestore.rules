@@ -27,12 +27,6 @@ service cloud.firestore {
     //   - isPublic: bool
     //   - createdAt: timestamp
     //
-    // Collection: cabinets (subcollection of projects)
-    // Document ID: auto-generated
-    // Fields:
-    //   - image: string (required)
-    //   - createdAt: timestamp
-    //
     // ===============================================================
 
     // ===============================================================
@@ -82,13 +76,8 @@ service cloud.firestore {
              data.uid == request.auth.uid &&
              data.roomImage is string && data.roomImage.size() < 2000 &&
              (data.get('generatedImage', null) == null || (data.generatedImage is string && data.generatedImage.size() < 2000)) &&
+             (data.get('cabinetImages', []) is list) &&
              (data.get('isPublic', false) is bool) &&
-             data.createdAt is timestamp;
-    }
-
-    function isValidCabinet(data) {
-      return data.keys().hasAll(['image', 'createdAt']) &&
-             data.image is string && data.image.size() < 2000 &&
              data.createdAt is timestamp;
     }
 
@@ -119,19 +108,6 @@ service cloud.firestore {
       allow update: if isDocOwner() && isValidProject(request.resource.data);
       allow delete: if isDocOwner();
 
-      match /cabinets/{cabinetId} {
-        allow read: if (isAuthenticated() && 
-                      get(/databases/$(database)/documents/projects/$(projectId)).data.uid == request.auth.uid) ||
-                      get(/databases/$(database)/documents/projects/$(projectId)).data.isPublic == true;
-        allow create: if isAuthenticated() && 
-                        get(/databases/$(database)/documents/projects/$(projectId)).data.uid == request.auth.uid &&
-                        isValidCabinet(request.resource.data);
-        allow update: if isAuthenticated() && 
-                        get(/databases/$(database)/documents/projects/$(projectId)).data.uid == request.auth.uid &&
-                        isValidCabinet(request.resource.data);
-        allow delete: if isAuthenticated() && 
-                        get(/databases/$(database)/documents/projects/$(projectId)).data.uid == request.auth.uid;
-      }
     }
   }
 }
