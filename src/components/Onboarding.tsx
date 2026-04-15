@@ -32,7 +32,7 @@ export function Onboarding() {
         companyName: role === 'professional' ? companyName : '',
         subscriptionTier: tier,
         onboardingCompleted: true,
-        credits: tier === 'pro' ? 9999 : 3 // Give unlimited for pro, 3 for free
+        credits: tier === 'pro' ? 10 : 3
       });
     } catch (err) {
       console.error("Error saving onboarding:", err);

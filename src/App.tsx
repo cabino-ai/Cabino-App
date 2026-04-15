@@ -218,7 +218,7 @@ function LibraryView() {
 }
 
 function MainApp({ initialProject, isPublicView = false }: { initialProject?: Project, isPublicView?: boolean }) {
-  const { user } = useAuth();
+  const { user, userProfile } = useAuth();
   const navigate = useNavigate();
   
   const [step, setStep] = useState<Step>(isPublicView || initialProject ? 'result' : 'room');
@@ -327,15 +327,16 @@ function MainApp({ initialProject, isPublicView = false }: { initialProject?: Pr
     setShowSlider(false);
     try {
       const prompt = await generateReplacementPrompt(
-        roomImage, 
-        cabinetImages, 
-        extendToCeiling, 
+        roomImage,
+        cabinetImages,
+        extendToCeiling,
         stageRoom,
         {
           master: masterPrompt,
           extend: extendPrompt,
           stage: stagePrompt
-        }
+        },
+        user?.uid
       );
       setGeneratedPrompt(prompt);
       
@@ -356,9 +357,13 @@ function MainApp({ initialProject, isPublicView = false }: { initialProject?: Pr
       }
       
       setStep('result');
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError("Something went wrong during analysis. Please try again.");
+      if (err?.message?.includes('No credits remaining')) {
+        setError("You've used all your credits. Please upgrade your plan to continue.");
+      } else {
+        setError("Something went wrong during analysis. Please try again.");
+      }
       setStep('cabinets');
     } finally {
       setLoading(false);
@@ -797,12 +802,12 @@ function MainApp({ initialProject, isPublicView = false }: { initialProject?: Pr
                 >
                   <ChevronLeft className="w-6 h-6" />
                 </button>
-                <button 
+                <button
                   onClick={handleGeneratePrompt}
-                  disabled={cabinetImages.length === 0}
+                  disabled={cabinetImages.length === 0 || (userProfile?.credits ?? 1) <= 0}
                   className="flex-1 bg-black text-white rounded-2xl h-16 font-bold uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-30 transition-all shadow-lg shadow-black/20 active:scale-[0.98]"
                 >
-                  Visualize Your New Space
+                  {(userProfile?.credits ?? 1) <= 0 ? 'No Credits Remaining' : 'Visualize Your New Space'}
                   <Sparkles className="w-5 h-5" />
                 </button>
               </div>

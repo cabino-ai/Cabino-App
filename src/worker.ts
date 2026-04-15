@@ -187,14 +187,26 @@ async function handleGeneratePrompt(request: Request, env: Env): Promise<Respons
   if (!env.GEMINI_API_KEY) return json({ error: 'GEMINI_API_KEY is not set' }, 500);
 
   try {
-    const { roomImage, cabinetImages, extendToCeiling, stageRoom, customPrompts } =
+    const { userId, roomImage, cabinetImages, extendToCeiling, stageRoom, customPrompts } =
       await request.json() as {
+        userId?: string;
         roomImage: string;
         cabinetImages: string[];
         extendToCeiling: boolean;
         stageRoom: boolean;
         customPrompts?: { master?: string; extend?: string; stage?: string };
       };
+
+    // Credit check
+    if (userId && env.FIREBASE_CLIENT_EMAIL && env.FIREBASE_PRIVATE_KEY) {
+      const userDoc = await firestoreGet(env, `users/${userId}`);
+      const credits = typeof userDoc?.credits === 'number' ? userDoc.credits : 0;
+      if (credits <= 0) {
+        return json({ error: 'No credits remaining. Please upgrade your plan.' }, 402);
+      }
+      // Decrement credit before generation so the user can't spam concurrent requests
+      await firestorePatch(env, `users/${userId}`, { credits: credits - 1 });
+    }
 
     const ai = getAI(env);
 

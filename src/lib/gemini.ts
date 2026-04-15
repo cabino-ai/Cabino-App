@@ -40,7 +40,8 @@ export const generateReplacementPrompt = async (
     master?: string;
     extend?: string;
     stage?: string;
-  }
+  },
+  userId?: string
 ): Promise<string> => {
   // Convert URLs to base64 client-side (always)
   const roomBase64 = await imageUrlToBase64(roomImage);
@@ -53,7 +54,7 @@ export const generateReplacementPrompt = async (
   const response = await fetch('/api/generate-prompt', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ roomImage: roomBase64, cabinetImages: cabinetBase64s, extendToCeiling, stageRoom, customPrompts }),
+    body: JSON.stringify({ userId, roomImage: roomBase64, cabinetImages: cabinetBase64s, extendToCeiling, stageRoom, customPrompts }),
   });
   const data = await response.json() as { prompt?: string; error?: string };
   if (!response.ok) throw new Error(data.error || 'Failed to generate prompt');

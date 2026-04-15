@@ -275,20 +275,25 @@ export function AccountModal({ isOpen, onClose, initialTab = 'profile' }: Accoun
                     </div>
                   </div>
 
-                  {userProfile?.subscriptionTier !== 'pro' && (
-                    <div className="mb-6">
-                      <div className="flex justify-between text-sm mb-2">
-                        <span className="font-medium">Credits Remaining</span>
-                        <span className="font-bold">{userProfile?.credits || 0} / 3</span>
+                  {(() => {
+                    const isPro = userProfile?.subscriptionTier === 'pro';
+                    const limit = isPro ? 10 : 3;
+                    const credits = userProfile?.credits || 0;
+                    return (
+                      <div className="mb-6">
+                        <div className="flex justify-between text-sm mb-2">
+                          <span className="font-medium">Credits Remaining</span>
+                          <span className="font-bold">{credits} / {limit}</span>
+                        </div>
+                        <div className="w-full h-2 bg-black/5 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-black rounded-full"
+                            style={{ width: `${Math.min(100, (credits / limit) * 100)}%` }}
+                          />
+                        </div>
                       </div>
-                      <div className="w-full h-2 bg-black/5 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-black rounded-full" 
-                          style={{ width: `${Math.min(100, ((userProfile?.credits || 0) / 3) * 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   {userProfile?.subscriptionTier === 'pro' ? (
                     <button 

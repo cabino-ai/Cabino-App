@@ -139,13 +139,16 @@ export async function firestoreQueryOne(
 export async function firestorePatch(
   env: FirebaseAdminEnv,
   docPath: string,
-  fields: Record<string, string>
+  fields: Record<string, string | number>
 ): Promise<void> {
   const token = await getAccessToken(env);
   const updateMask = Object.keys(fields).map(k => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
   const body = {
     fields: Object.fromEntries(
-      Object.entries(fields).map(([k, v]) => [k, { stringValue: v }])
+      Object.entries(fields).map(([k, v]) => [
+        k,
+        typeof v === 'number' ? { integerValue: String(v) } : { stringValue: v },
+      ])
     ),
   };
   const res = await fetch(`${firestoreUrl(env, docPath)}?${updateMask}`, {
