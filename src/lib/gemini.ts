@@ -64,7 +64,8 @@ export const generateReplacementPrompt = async (
 export const generateDesignImage = async (
   roomImage: string,
   cabinetImages: string[],
-  prompt: string
+  prompt: string,
+  userId?: string
 ): Promise<string | null> => {
   // Convert URLs to base64 client-side (always)
   const roomBase64 = await imageUrlToBase64(roomImage);
@@ -77,7 +78,7 @@ export const generateDesignImage = async (
   const response = await fetch('/api/generate-image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ roomImage: roomBase64, cabinetImages: cabinetBase64s, prompt }),
+    body: JSON.stringify({ userId, roomImage: roomBase64, cabinetImages: cabinetBase64s, prompt }),
   });
   const data = await response.json() as { image?: string | null; error?: string };
   if (!response.ok) throw new Error(data.error || 'Failed to generate image');

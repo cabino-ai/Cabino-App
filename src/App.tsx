@@ -348,7 +348,7 @@ function MainApp({ initialProject, isPublicView = false }: { initialProject?: Pr
 
       // Generate the image using the same context
       try {
-        const image = await generateDesignImage(roomImage, cabinetImages, prompt);
+        const image = await generateDesignImage(roomImage, cabinetImages, prompt, user?.uid);
         const resizedImage = await resizeImage(image);
         setGeneratedImage(resizedImage);
       } catch (imgErr) {
@@ -1005,9 +1005,9 @@ function MainApp({ initialProject, isPublicView = false }: { initialProject?: Pr
               </div>
 
               <div className="max-w-2xl mx-auto w-full space-y-4">
-                <div className={`grid ${isPublicView ? 'grid-cols-1' : 'grid-cols-2'} gap-4 pt-4`}>
+                <div className={`grid ${isPublicView ? 'grid-cols-1' : 'grid-cols-3'} gap-4 pt-4`}>
                   {!isPublicView && (
-                    <button 
+                    <button
                       onClick={reset}
                       className="bg-white border border-black/5 rounded-2xl h-16 font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-black/5 transition-all shadow-sm active:scale-[0.98]"
                     >
@@ -1015,7 +1015,21 @@ function MainApp({ initialProject, isPublicView = false }: { initialProject?: Pr
                       New
                     </button>
                   )}
-                  <button 
+                  {!isPublicView && (
+                    <button
+                      onClick={handleGeneratePrompt}
+                      disabled={loading || (userProfile?.credits ?? 0) <= 0}
+                      className="bg-white border border-black/5 rounded-2xl h-16 font-bold uppercase tracking-widest flex flex-col items-center justify-center gap-0.5 hover:bg-black/5 transition-all shadow-sm active:scale-[0.98] disabled:opacity-30"
+                      title="Generate again with the same photos — costs 1 credit"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-5 h-5" />
+                        Retry
+                      </div>
+                      <span className="text-[9px] text-black/30 font-normal normal-case tracking-normal">1 credit</span>
+                    </button>
+                  )}
+                  <button
                     onClick={downloadImage}
                     className={`bg-white border border-black/5 rounded-2xl h-16 font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-black/5 transition-all shadow-sm active:scale-[0.98] ${isPublicView ? 'w-full' : ''}`}
                   >
