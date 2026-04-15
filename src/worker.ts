@@ -163,10 +163,14 @@ async function handleStripeWebhook(request: Request, env: Env): Promise<Response
     switch (event.type) {
       case 'customer.subscription.created':
       case 'customer.subscription.updated':
-        await firestorePatch(env, `users/${match.id}`, { subscriptionTier: tier });
+        await firestorePatch(env, `users/${match.id}`, {
+          subscriptionTier: tier,
+          credits: isActive ? 10 : 3,
+          creditsResetAt: subscription.current_period_end,
+        });
         break;
       case 'customer.subscription.deleted':
-        await firestorePatch(env, `users/${match.id}`, { subscriptionTier: 'free' });
+        await firestorePatch(env, `users/${match.id}`, { subscriptionTier: 'free', credits: 3 });
         break;
     }
 

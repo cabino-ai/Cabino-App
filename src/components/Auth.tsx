@@ -24,6 +24,7 @@ export interface UserProfileData {
   companyName: string;
   onboardingCompleted: boolean;
   credits: number;
+  creditsResetAt?: number;
   createdAt: any;
 }
 

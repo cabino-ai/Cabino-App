@@ -360,7 +360,7 @@ function MainApp({ initialProject, isPublicView = false }: { initialProject?: Pr
     } catch (err: any) {
       console.error(err);
       if (err?.message?.includes('No credits remaining')) {
-        setError("You've used all your credits. Please upgrade your plan to continue.");
+        setError("You've used all your credits.");
       } else {
         setError("Something went wrong during analysis. Please try again.");
       }
@@ -368,6 +368,22 @@ function MainApp({ initialProject, isPublicView = false }: { initialProject?: Pr
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleUpgrade = async () => {
+    if (!user) return;
+    const response = await fetch('/api/create-checkout-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        priceId: 'price_1TIEDYRzxeFhHl8ukjtG21RF',
+        userId: user.uid,
+        successUrl: window.location.origin,
+        cancelUrl: window.location.href,
+      }),
+    });
+    const data = await response.json() as { url?: string };
+    if (data.url) window.open(data.url, '_blank');
   };
 
   const reset = () => {
@@ -802,14 +818,48 @@ function MainApp({ initialProject, isPublicView = false }: { initialProject?: Pr
                 >
                   <ChevronLeft className="w-6 h-6" />
                 </button>
-                <button
-                  onClick={handleGeneratePrompt}
-                  disabled={cabinetImages.length === 0 || (userProfile?.credits ?? 1) <= 0}
-                  className="flex-1 bg-black text-white rounded-2xl h-16 font-bold uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-30 transition-all shadow-lg shadow-black/20 active:scale-[0.98]"
-                >
-                  {(userProfile?.credits ?? 1) <= 0 ? 'No Credits Remaining' : 'Visualize Your New Space'}
-                  <Sparkles className="w-5 h-5" />
-                </button>
+                {(() => {
+                  const outOfCredits = (userProfile?.credits ?? 1) <= 0;
+                  const isPro = userProfile?.subscriptionTier === 'pro';
+
+                  if (outOfCredits && !isPro) {
+                    return (
+                      <button
+                        onClick={handleUpgrade}
+                        className="flex-1 bg-black text-white rounded-2xl h-16 font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg shadow-black/20 active:scale-[0.98]"
+                      >
+                        Upgrade to Continue
+                        <Sparkles className="w-5 h-5" />
+                      </button>
+                    );
+                  }
+
+                  if (outOfCredits && isPro) {
+                    const resetDate = userProfile?.creditsResetAt
+                      ? new Date(userProfile.creditsResetAt * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+                      : null;
+                    return (
+                      <div className="flex-1 flex flex-col items-center justify-center h-16 bg-black/5 rounded-2xl gap-0.5">
+                        <span className="font-bold text-sm text-black/60 uppercase tracking-widest">No Credits Remaining</span>
+                        <span className="text-xs text-black/40">
+                          {resetDate ? `Resets ${resetDate}` : ''}{' · '}
+                          <a href="mailto:support@cabino.ai" className="underline hover:text-black/60">Contact us</a>
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <button
+                      onClick={handleGeneratePrompt}
+                      disabled={cabinetImages.length === 0}
+                      className="flex-1 bg-black text-white rounded-2xl h-16 font-bold uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-30 transition-all shadow-lg shadow-black/20 active:scale-[0.98]"
+                    >
+                      Visualize Your New Space
+                      <Sparkles className="w-5 h-5" />
+                    </button>
+                  );
+                })()}
               </div>
             </motion.div>
           )}
