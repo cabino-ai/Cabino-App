@@ -22,7 +22,8 @@ import {
   Save,
   Download,
   Settings,
-  Terminal
+  Terminal,
+  Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Share2, Link as LinkIcon } from 'lucide-react';
@@ -666,14 +667,14 @@ function MainApp({ initialProject, isPublicView = false }: { initialProject?: Pr
               </div>
 
               <div className="flex gap-4">
-                <button 
+                <button
                   onClick={() => roomInputRef.current?.click()}
                   className="flex-1 py-4 bg-white border border-black/5 rounded-2xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-sm hover:bg-black/5 transition-all"
                 >
                   <Camera className="w-4 h-4" />
                   Local File
                 </button>
-                <button 
+                <button
                   onClick={handleGoogleDriveRoom}
                   className="flex-1 py-4 bg-white border border-black/5 rounded-2xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-sm hover:bg-black/5 transition-all"
                 >
@@ -681,6 +682,28 @@ function MainApp({ initialProject, isPublicView = false }: { initialProject?: Pr
                   Google Drive
                 </button>
               </div>
+
+              {!roomImage && (
+                <div className="bg-white border border-black/5 rounded-2xl p-5 shadow-sm space-y-3">
+                  <div className="flex items-center gap-2 text-black/40">
+                    <Info className="w-4 h-4 shrink-0" />
+                    <span className="text-xs font-bold uppercase tracking-widest">Tips for best results</span>
+                  </div>
+                  <ul className="space-y-2">
+                    {[
+                      'Shoot straight-on — avoid steep angles',
+                      'Use natural light, no flash or harsh shadows',
+                      'Include the full cabinet run in the frame',
+                      'Clear the countertops of clutter if possible',
+                    ].map((tip) => (
+                      <li key={tip} className="flex items-start gap-2 text-xs text-black/50 leading-relaxed">
+                        <span className="mt-1 w-1 h-1 rounded-full bg-black/20 shrink-0" />
+                        {tip}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               <div className="space-y-4">
                 <div 
