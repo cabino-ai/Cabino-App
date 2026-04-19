@@ -618,7 +618,7 @@ function MainApp({ initialProject, isPublicView = false }: { initialProject?: Pr
         )}
       </AnimatePresence>
 
-      <main className={`pt-24 pb-20 px-6 mx-auto transition-all duration-500 ${step === 'result' ? 'max-w-5xl' : 'max-w-md'}`}>
+      <main className={`pt-24 px-6 mx-auto transition-all duration-500 ${isPublicView ? 'pb-28' : 'pb-20'} ${step === 'result' ? 'max-w-5xl' : 'max-w-md'}`}>
         <AnimatePresence mode="wait">
           {step === 'room' && (
             <motion.div
@@ -1108,19 +1108,34 @@ function MainApp({ initialProject, isPublicView = false }: { initialProject?: Pr
         </AnimatePresence>
       </main>
 
-      {/* Footer Status Bar */}
-      <footer className="fixed bottom-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-t border-black/5 flex items-center justify-center px-6 z-50">
-        <div className="flex gap-6">
-          {['room', 'cabinets', 'result'].map((s, i) => (
-            <div 
-              key={s}
-              className={`w-2 h-2 rounded-full transition-all duration-500 ${
-                step === s ? 'w-8 bg-black' : 'bg-black/10'
-              }`}
-            />
-          ))}
-        </div>
-      </footer>
+      {/* Footer */}
+      {isPublicView ? (
+        <footer className="fixed bottom-0 left-0 right-0 bg-black text-white flex items-center justify-between px-6 py-4 z-50">
+          <div>
+            <p className="font-semibold text-sm tracking-tight">Like what you see?</p>
+            <p className="text-white/50 text-xs">Visualize your own kitchen with Cabino AI</p>
+          </div>
+          <button
+            onClick={() => navigate('/login')}
+            className="bg-white text-black text-xs font-bold uppercase tracking-widest px-5 py-3 rounded-xl hover:bg-white/90 transition-colors active:scale-[0.98] shrink-0"
+          >
+            Try for Free
+          </button>
+        </footer>
+      ) : (
+        <footer className="fixed bottom-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-t border-black/5 flex items-center justify-center px-6 z-50">
+          <div className="flex gap-6">
+            {['room', 'cabinets', 'result'].map((s) => (
+              <div
+                key={s}
+                className={`w-2 h-2 rounded-full transition-all duration-500 ${
+                  step === s ? 'w-8 bg-black' : 'bg-black/10'
+                }`}
+              />
+            ))}
+          </div>
+        </footer>
+      )}
     </div>
   );
 }
