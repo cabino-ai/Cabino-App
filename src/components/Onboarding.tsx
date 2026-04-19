@@ -30,10 +30,29 @@ export function Onboarding() {
       await updateDoc(doc(db, 'users', user.uid), {
         role,
         companyName: role === 'professional' ? companyName : '',
-        subscriptionTier: tier,
-        onboardingCompleted: true,
-        credits: tier === 'pro' ? 10 : 3
+        onboardingCompleted: true
       });
+
+      // Picking "Pro" in onboarding doesn't grant Pro — only a completed
+      // Stripe checkout does (the Worker webhook updates subscriptionTier).
+      // Kick the user to checkout; if they abandon, they stay on free.
+      if (tier === 'pro') {
+        const response = await fetch('/api/create-checkout-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            priceId: 'price_1TIEDYRzxeFhHl8ukjtG21RF',
+            userId: user.uid,
+            successUrl: window.location.origin,
+            cancelUrl: window.location.origin,
+          }),
+        });
+        const data = await response.json() as { url?: string };
+        if (data.url) {
+          window.location.assign(data.url);
+          return;
+        }
+      }
     } catch (err) {
       console.error("Error saving onboarding:", err);
       setSaving(false);
