@@ -515,6 +515,18 @@ function MainApp({ initialProject, isPublicView = false }: { initialProject?: Pr
                   <Terminal className="w-5 h-5 opacity-50" />
                 </button>
               )}
+              {userProfile && (
+                <div
+                  className={`text-xs font-bold px-3 py-1.5 rounded-full ${
+                    (userProfile.credits ?? 0) <= 0
+                      ? 'bg-red-50 text-red-500'
+                      : 'bg-black/5 text-black/50'
+                  }`}
+                  title="Generations remaining"
+                >
+                  {userProfile.credits ?? 0} credits
+                </div>
+              )}
               <UserProfile />
             </>
           )}
